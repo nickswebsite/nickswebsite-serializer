@@ -97,6 +97,42 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual(o.subobjs[0].field, s.data["subObjs"][0]["field"])
         self.assertEqual(o.subobjs[1].field, s.data["subObjs"][1]["field"])
 
+    def test_list_field_failure_with_subobjects(self):
+        class SubObj(object):
+            def __init__(self, field=""):
+                self.field = field
+
+        class Obj(object):
+            def __init__(self):
+                self.subobjs = []
+                self.objfield = ""
+
+        class SubObjSerializer(Serializer):
+            class Meta:
+                model = SubObj
+
+            field = StringField(required=True)
+
+        class ObjSerializer(Serializer):
+            class Meta:
+                model = Obj
+
+            objfield = StringField(name="objField", required=True, allow_null=False)
+            subobjs = ListField(ObjectField(SubObjSerializer, required=True, allow_null=False),
+                                name="subObjs", required=True, allow_null=False)
+
+        o = Obj()
+        o.objfield = "ONE"
+        o.subobjs = [type('FailedSubObj1', (object,), {}), SubObj(field=1), SubObj(field="ONE_SUB_TWO")]
+        try:
+            s = ObjSerializer(object=o)
+            s.validate()
+            self.fail('No Exception was thrown, object should have failed validation')
+        except ValidationError as ex:
+            self.assertEqual("subObjs[0]: ['Field field is missing from object.']", ex.errors[0])
+            self.assertEqual('subObjs[1]: ["field must be a (<type \'basestring\'>,).  Got <type \'int\'>."]',
+                             ex.errors[1])
+
     def test_list_failure(self):
         class ObjSerializer(Serializer):
             list_field = ListField(StringField(), required=True, allow_null=False)
@@ -173,9 +209,9 @@ class AcceptanceTests(unittest.TestCase):
             float_field = FloatField(name="floatField", required=True, allow_null=False)
             boolean_field = BooleanField(name="boolField", required=True, allow_null=False)
             datetime_field = DateTimeField(name="datetimeField", required=True, allow_null=False)
-            date_field = DateField(name="dateField", required=True, allow_null=False)
-            time_field = TimeField(name="timeField", required=True, allow_null=False)
-            uuid_field = UuidField(name="uuidField", required=True, allow_null=False)
+            date_field = DateField(name="dateField", required=True, allow_null=True)
+            time_field = TimeField(name="timeField", required=True, allow_null=True)
+            uuid_field = UuidField(name="uuidField", required=True, allow_null=True)
 
         obj = Obj()
         obj.string_field = u"Some String\u2134"
@@ -258,16 +294,37 @@ class AcceptanceTests(unittest.TestCase):
         self.assertRaises(ValidationError, s2.validate)
 
     def test_missing_fields(self):
-        class Obj(object):
+        class DefaultModelObj(object):
             def __init__(self):
                 self.string_field = "strfield"
 
         class ObjSerializer(Serializer):
             class Meta:
-                model = Obj
+                model = DefaultModelObj
 
             string_field = StringField(name="stringField", required=False, allow_null=False)
 
         s = ObjSerializer(data={})
         s.validate()
-        self.assertEqual(s.object.string_field, Obj().string_field)
+        self.assertEqual(s.object.string_field, DefaultModelObj().string_field)
+
+        # object to data
+        object_with_missing_field = type('DefaultModelObj', (object,), s.data)
+        deserializer = ObjSerializer(object=object_with_missing_field)
+        deserializer.validate()
+        self.assertEqual(deserializer.data['stringField'], DefaultModelObj().string_field)
+
+    def test_missing_fields_without_default_model(self):
+        class ObjSerializer(Serializer):
+            string_field = StringField(name="stringField", required=False, allow_null=False)
+
+        data = {}
+        s = ObjSerializer(data=data)
+        s.validate()
+        self.assertEqual(getattr(s.object, 'string_field', None), data.get('StringField'))
+
+        # object to data
+        object_with_missing_field = type('DefaultModelObj', (object,), s.data)
+        deserializer = ObjSerializer(object=object_with_missing_field)
+        deserializer.validate()
+        self.assertEqual(deserializer.data.get('stringField'), getattr(object_with_missing_field, 'string_field', None))
