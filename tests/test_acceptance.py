@@ -130,8 +130,8 @@ class AcceptanceTests(unittest.TestCase):
             self.fail('No Exception was thrown, object should have failed validation')
         except ValidationError as ex:
             self.assertEqual("subObjs[0]: ['Field field is missing from object.']", ex.errors[0])
-            self.assertEqual('subObjs[1]: ["field must be a (<type \'basestring\'>,).  Got <type \'int\'>."]',
-                             ex.errors[1])
+            self.assertEqual('subObjs[1]: ["field must be a (<class \'str\'>,).  Got <class \'int\'>."]',
+                             ex.errors[1].replace('type', 'class').replace('basestring', 'str'))
 
     def test_list_failure(self):
         class ObjSerializer(Serializer):
