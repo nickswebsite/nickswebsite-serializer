@@ -110,11 +110,28 @@ class BaseSerializer(object):
         else:
             self.object_to_data()
 
-    def data_to_object(self):
+    def default_model(self, data=False):
         model_class = getattr(self.options, "model", DefaultModel)
         model_class_args = getattr(self.options, "model_init_args", ())
         model_class_kwargs = getattr(self.options, "model_init_kwargs", {})
+        default_model = model_class(*model_class_args, **model_class_kwargs)
+        errors = []
 
+        default_model_data = {}
+        for field in self.fields:
+            if hasattr(default_model, field.object_field_name):
+                try:
+                    default_model_data[field.name] = field.base_object_to_data(getattr(default_model,
+                                                                                       field.object_field_name))
+                except ValidationError as ex:
+                    errors.append('DefaultModel Error: {}'.format(ex.errors))
+
+        if errors:
+            raise ValidationError(errors)
+
+        return default_model if not data else default_model_data
+
+    def data_to_object(self):
         errors = []
         for field in self.fields:
             if field.required and field.name not in self.data:
@@ -123,7 +140,7 @@ class BaseSerializer(object):
         if errors:
             raise ValidationError(errors)
 
-        obj = model_class(*model_class_args, **model_class_kwargs)
+        obj = self.default_model()
         for field in self.fields:
             try:
                 field_obj = field.base_clean(self.data[field.name])
@@ -148,12 +165,14 @@ class BaseSerializer(object):
         if errors:
             raise ValidationError(errors)
 
-        data = {}
+        data = self.default_model(data=True)
         for field in self.fields:
             try:
                 field_data = field.base_object_to_data(getattr(self.object, field.object_field_name))
             except ValidationError as ex:
                 errors.extend(ex.errors)
+            except AttributeError:
+                pass
             else:
                 data[field.name] = field_data
 

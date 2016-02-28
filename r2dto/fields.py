@@ -117,19 +117,18 @@ class ListField(BaseField):
 
     def object_to_data(self, obj):
         res = []
+        errors = []
         for item_i, item in enumerate(obj):
             for allowed_type in self.allowed_types:
                 try:
                     data = allowed_type.object_to_data(item)
-                except ValidationError:
-                    pass
+                except ValidationError as ex:
+                    errors.append('{}[{}]: {}'.format(self.name, item_i, ex))
                 else:
                     res.append(data)
                     break
-            else:
-                raise InvalidTypeValidationError(
-                    "{}[{}]".format(self.name, item_i), str(self.allowed_types), type(item)
-                )
+        if errors:
+            raise ValidationError(errors)
         return res
 
 
